@@ -9,6 +9,7 @@ function Chat() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadConversations();
@@ -16,24 +17,30 @@ function Chat() {
 
   const loadConversations = async () => {
     try {
+      setError(null);
       const response = await conversationService.getAll();
       setConversations(response.data);
       if (response.data.length > 0 && !currentConversation) {
         selectConversation(response.data[0]);
       }
     } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to load conversations';
       console.error('Failed to load conversations:', error);
+      setError(errorMsg);
     }
   };
 
   const selectConversation = async (conversation) => {
     setCurrentConversation(conversation);
     setLoading(true);
+    setError(null);
     try {
       const response = await messageService.getAll(conversation.id);
       setMessages(response.data);
     } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to load messages';
       console.error('Failed to load messages:', error);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -41,11 +48,14 @@ function Chat() {
 
   const createNewConversation = async () => {
     try {
+      setError(null);
       const response = await conversationService.create('New Conversation', {});
       setConversations([response.data, ...conversations]);
       selectConversation(response.data);
     } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to create conversation';
       console.error('Failed to create conversation:', error);
+      setError(errorMsg);
     }
   };
 
@@ -53,6 +63,7 @@ function Chat() {
     if (!currentConversation || !content.trim()) return;
 
     try {
+      setError(null);
       // Add user message
       const userMessageResponse = await messageService.create(
         currentConversation.id,
@@ -89,12 +100,15 @@ function Chat() {
         );
       }
     } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to send message';
       console.error('Failed to send message:', error);
+      setError(errorMsg);
     }
   };
 
   const deleteConversation = async (id) => {
     try {
+      setError(null);
       await conversationService.delete(id);
       const updated = conversations.filter((c) => c.id !== id);
       setConversations(updated);
@@ -107,12 +121,27 @@ function Chat() {
         }
       }
     } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to delete conversation';
       console.error('Failed to delete conversation:', error);
+      setError(errorMsg);
     }
   };
 
   return (
     <div className="flex h-screen bg-gray-100">
+      {error && (
+        <div className="fixed top-4 right-4 bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg z-50 max-w-sm">
+          <div className="flex justify-between items-center">
+            <span>{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="ml-4 text-white hover:text-gray-200"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       <Sidebar
         conversations={conversations}
         currentConversation={currentConversation}

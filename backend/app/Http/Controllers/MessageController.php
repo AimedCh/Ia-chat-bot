@@ -7,6 +7,7 @@ use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class MessageController extends Controller
@@ -16,8 +17,15 @@ class MessageController extends Controller
      */
     public function index(Request $request, Conversation $conversation)
     {
-        $this->authorizeConversation($request, $conversation);
-        return response()->json($conversation->messages()->orderBy('created_at')->get());
+        try {
+            $this->authorizeConversation($request, $conversation);
+            $messages = $conversation->messages()->orderBy('created_at')->get();
+            Log::info('Messages retrieved', ['conversation_id' => $conversation->id, 'count' => $messages->count()]);
+            return response()->json($messages);
+        } catch (\Exception $e) {
+            Log::error('Failed to retrieve messages', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Failed to retrieve messages'], 500);
+        }
     }
 
     /**
@@ -33,18 +41,27 @@ class MessageController extends Controller
      */
     public function store(Request $request, Conversation $conversation)
     {
-        $this->authorizeConversation($request, $conversation);
+        try {
+            $this->authorizeConversation($request, $conversation);
 
-        $data = $request->validate([
-            'role' => 'required|in:user,assistant,system,tool',
-            'content' => 'nullable|string',
-            'usage' => 'nullable|array',
-            'status' => 'nullable|string',
-        ]);
+            $data = $request->validate([
+                'role' => 'required|in:user,assistant,system,tool',
+                'content' => 'nullable|string',
+                'usage' => 'nullable|array',
+                'status' => 'nullable|string',
+            ]);
 
-        $message = $conversation->messages()->create($data);
+            $message = $conversation->messages()->create($data);
+            Log::info('Message created', ['id' => $message->id, 'conversation_id' => $conversation->id, 'role' => $message->role]);
 
-        return response()->json($message, 201);
+            return response()->json($message, 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation failed for message creation', ['errors' => $e->errors()]);
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Failed to create message', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Failed to create message'], 500);
+        }
     }
 
     /**
@@ -52,9 +69,15 @@ class MessageController extends Controller
      */
     public function show(Request $request, Conversation $conversation, Message $message)
     {
-        $this->authorizeConversation($request, $conversation);
-        abort_unless($message->conversation_id === $conversation->id, 404);
-        return response()->json($message);
+        try {
+            $this->authorizeConversation($request, $conversation);
+            abort_unless($message->conversation_id === $conversation->id, 404);
+            Log::info('Message retrieved', ['id' => $message->id]);
+            return response()->json($message);
+        } catch (\Exception $e) {
+            Log::error('Failed to retrieve message', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Failed to retrieve message'], 500);
+        }
     }
 
     /**
@@ -70,17 +93,26 @@ class MessageController extends Controller
      */
     public function update(Request $request, Conversation $conversation, Message $message)
     {
-        $this->authorizeConversation($request, $conversation);
-        abort_unless($message->conversation_id === $conversation->id, 404);
+        try {
+            $this->authorizeConversation($request, $conversation);
+            abort_unless($message->conversation_id === $conversation->id, 404);
 
-        $data = $request->validate([
-            'content' => 'nullable|string',
-            'usage' => 'nullable|array',
-            'status' => 'nullable|string',
-        ]);
+            $data = $request->validate([
+                'content' => 'nullable|string',
+                'usage' => 'nullable|array',
+                'status' => 'nullable|string',
+            ]);
 
-        $message->update($data);
-        return response()->json($message);
+            $message->update($data);
+            Log::info('Message updated', ['id' => $message->id]);
+            return response()->json($message);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation failed for message update', ['errors' => $e->errors()]);
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Failed to update message', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Failed to update message'], 500);
+        }
     }
 
     /**
@@ -88,10 +120,17 @@ class MessageController extends Controller
      */
     public function destroy(Request $request, Conversation $conversation, Message $message)
     {
-        $this->authorizeConversation($request, $conversation);
-        abort_unless($message->conversation_id === $conversation->id, 404);
-        $message->delete();
-        return response()->json(['message' => 'Deleted']);
+        try {
+            $this->authorizeConversation($request, $conversation);
+            abort_unless($message->conversation_id === $conversation->id, 404);
+            $messageId = $message->id;
+            $message->delete();
+            Log::info('Message deleted', ['id' => $messageId]);
+            return response()->json(['message' => 'Deleted']);
+        } catch (\Exception $e) {
+            Log::error('Failed to delete message', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Failed to delete message'], 500);
+        }
     }
 
     private function authorizeConversation(Request $request, Conversation $conversation): void
